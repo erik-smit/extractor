@@ -1634,8 +1634,7 @@ class ErofsHandler(FilesystemExtractor):
 
     def extract_filesystem(self, output_dir):
         global base_dir
-        erofs_tool = os.path.join(base_dir, "erofs_tool.py")
-        subprocess.check_call([erofs_tool, "extract", "--verify-zip", self.abs_fn, output_dir])
+        subprocess.check_call(["fsck.erofs", "--extract=%s" % output_dir.decode(), "--no-preserve", self.abs_fn])
 
 
 class CpbHandler(FileHandler):
