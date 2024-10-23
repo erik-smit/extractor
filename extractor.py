@@ -1150,6 +1150,15 @@ class Lz4Handler(FileHandler):
                 return CheckFileResult.IGNORE
             if self.fn.lower().startswith(b"odm."):
                 return CheckFileResult.IGNORE
+            if self.fn.lower().startswith(b"dspso."):
+                # Samsung SM-S918B_EON_S918BXXU1AWA6
+                return CheckFileResult.IGNORE
+            if self.fn.lower().startswith(b"vm-bootsys."):
+                # Samsung SM-S918B_EON_S918BXXU1AWA6
+                return CheckFileResult.IGNORE
+            if self.fn.lower().startswith(b"vendor_boot."):
+                # Samsung SM-S918B_EON_S918BXXU1AWA6ls -la
+                return CheckFileResult.IGNORE
             if self.fn.lower().startswith(b"system"):
                 self.image_type = ImageType.SYSTEM
                 return CheckFileResult.SYSTEM_IMG
@@ -1604,6 +1613,12 @@ class FilesystemExtractor(FileHandler):
 
 class ErofsHandler(FilesystemExtractor):
     def check(self) -> CheckFileResult:
+        # FIXME: Erik: who is supposed to set image_type SYSTEM or VENDOR? Why ExtFsHandler does do it but ErofsHandler does not?
+        if self.fn.lower().startswith(b"system.") or self.fn.lower().startswith(b"system_a.") or self.fn.lower().startswith(b"system-sign."):
+            self.image_type = ImageType.SYSTEM
+        if self.fn.lower().startswith(b"vendor.") or self.fn.lower().startswith(b"vendor_a.") or self.fn.lower().startswith(b"vendor-sign."):
+            self.image_type = ImageType.VENDOR
+
         with open(self.abs_fn, 'rb') as f:
             f.seek(0x400)
             buf = f.read(4)
