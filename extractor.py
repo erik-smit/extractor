@@ -54,6 +54,7 @@ def main():
     group.add_argument("--no-output", action="store_true", help="Only run extraction but ignore output")
     parser.add_argument("--boot-recovery-output", help="Directory where boot/recovery img should be stored")
     parser.add_argument("--allow-missing-vendor", action="store_true", help="Allow missing vendor partition for extraction, required for system-only updates (=> Project Treble), e.g. for some LineageOS images")
+    parser.add_argument("--skip-cleanup", action="store_true", help="For debugging purposes: Don't delete temporary files")
     args = parser.parse_args()
     extractor = FirmwareExtractor(args.input)
     try:
@@ -62,9 +63,9 @@ def main():
         if args.boot_recovery_output is not None:
             output_boot_img_path = os.path.join(os.path.abspath(args.boot_recovery_output), "boot.img")
             output_recovery_img_path = os.path.join(os.path.abspath(args.boot_recovery_output), "recovery.img")
-        extractor.extract(output_system_tar=args.tar_output, output_system_dir=args.system_dir_output, output_boot_img_path=output_boot_img_path, output_recovery_img_path=output_recovery_img_path, allow_missing_vendor=args.allow_missing_vendor)
+        extractor.extract(output_system_tar=args.tar_output, output_system_dir=args.system_dir_output, output_boot_img_path=output_boot_img_path, output_recovery_img_path=output_recovery_img_path, allow_missing_vendor=args.allow_missing_vendor, skip_cleanup=args.skip_cleanup)
     finally:
-        extractor.cleanup()
+        extractor.cleanup(args.skip_cleanup)
 
 
 class CheckFileResult(Enum):
@@ -2107,7 +2108,7 @@ class FirmwareExtractor:
         self.boot_image_handler = None
         self.recovery_image_handler = None
 
-    def extract(self, output_system_tar=None, output_system_dir=None, make_world_readable=True, output_boot_img_path=None, output_recovery_img_path=None, allow_missing_vendor=False):
+    def extract(self, output_system_tar=None, output_system_dir=None, make_world_readable=True, output_boot_img_path=None, output_recovery_img_path=None, allow_missing_vendor=False, skip_cleanup=False):
         if output_system_dir is not None and isinstance(output_system_dir, str):
             output_system_dir = output_system_dir.encode()
         stage_queue = deque()
@@ -2302,9 +2303,11 @@ class FirmwareExtractor:
                 with open(output_recovery_img_path, 'wb') as f:
                     self.recovery_image_handler.write_image(f)
         finally:
-            self.cleanup()
+            self.cleanup(skip_cleanup)
 
-    def cleanup(self):
+    def cleanup(self, skip_cleanup):
+        if skip_cleanup:
+            return
         assert b'ANDROID_EXTRACT_' in self.tmpdir
         for handler in self.mounted_handlers:
             # noinspection PyBroadException
