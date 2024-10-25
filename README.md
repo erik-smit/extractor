@@ -11,12 +11,16 @@ Extractor is a powerful Android firmware image extraction utility
 Extractor supports the following Android image formats:
 
 ```
-android sparse image, erofs, extfs, android signed images, android data image, android data image brotli, pac, zip, lz4, tar, tar md5, sin, ozip, app, kdz, bin, cpb, super
+android sparse image, erofs, extfs, f2fs, android signed images, android data image, android data image brotli, pac, zip, lz4, tar, tar md5, sin, ozip, app, kdz, bin, cpb, super
 ```
 
 # Installation
 
 To run Extractor on your computer some preparation steps are necessary. Since Extractor is a python tool, a working python environment is required.
+
+### For F2FS support
+Kernel with CONFIG_F2FS_FS and compression features in your kernel.
+If rsync of f2fs fs fails with "Operation not supported (95)", you're probably missing the relevant CONFIG_F2FS_compression flags.
 
 ### Clone repo home folder
 
@@ -37,7 +41,7 @@ sudo apt update
 ### Install dependencies
 
 ```bash
-sudo apt install -y git android-sdk-libsparse-utils liblz4-tool brotli unrar libxml2 libxml2-dev libffi-dev
+sudo apt install -y git android-sdk-libsparse-utils liblz4-tool brotli unrar libxml2 libxml2-dev libffi-dev f2fs-tools
 ```
 
 We recommend using a python virtualenv for installing Extractors python dependencies:

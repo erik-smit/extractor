@@ -655,7 +655,7 @@ class RawprogramUnsparseHandler(FileHandler):
                 else:
                     raise ValueError("Invalid image_type=%r" % image_type)
                 extract_parts_to_file(parts, abs_out_fn)
-                HANDLER_TYPES = [ExtfsHandler, ErofsHandler]
+                HANDLER_TYPES = [ExtfsHandler, ErofsHandler, F2FSHandler]
                 handlers = []
                 for handler_type in HANDLER_TYPES:
                     handler = handler_type(self.extractor, self.extractor.rel_path(abs_out_fn), image_type=image_type, file_type=get_file_type(abs_out_fn))
@@ -1099,7 +1099,7 @@ class AsusMagicHandler(FileHandler):
                 while len(buf) > 0:
                     output_file.write(buf)
                     buf = input_file.read(128 * 1024)
-        HANDLER_TYPES = [ExtfsHandler, ErofsHandler]
+        HANDLER_TYPES = [ExtfsHandler, ErofsHandler, F2FSHandler]
         handlers = []
         for handler_type in HANDLER_TYPES:
             handler = handler_type(self.extractor, self.extractor.rel_path(abs_out_fn), image_type=self.image_type, file_type=get_file_type(abs_out_fn))
@@ -1349,7 +1349,7 @@ class BrotliHandler(FileHandler):
         logging.info("BrotliHandler: cmd=%r" % cmd)
         subprocess.check_call(cmd)
         assert os.path.exists(abs_out_fn)
-        HANDLER_TYPES = [ExtfsHandler, ErofsHandler]
+        HANDLER_TYPES = [ExtfsHandler, ErofsHandler, F2FSHandler]
         handlers = []
         for handler_type in HANDLER_TYPES:
             handler = handler_type(self.extractor, self.extractor.rel_path(abs_out_fn), image_type=self.image_type, file_type=get_file_type(abs_out_fn))
@@ -1483,7 +1483,7 @@ class TransferListHandler(FileHandler):
                                 output_file.write(buf)
             if output_file.tell() < self.file_size:
                 output_file.truncate(self.file_size)
-        HANDLER_TYPES = [ExtfsHandler, ErofsHandler]
+        HANDLER_TYPES = [ExtfsHandler, ErofsHandler, F2FSHandler]
         handlers = []
         for handler_type in HANDLER_TYPES:
             handler = handler_type(self.extractor, self.extractor.rel_path(abs_out_fn), image_type=self.image_type, file_type=get_file_type(abs_out_fn))
@@ -1637,6 +1637,55 @@ class ErofsHandler(FilesystemExtractor):
         global base_dir
         subprocess.check_call(["fsck.erofs", "--extract=%s" % output_dir.decode(), "--no-preserve", self.abs_fn])
 
+class F2FSHandler(MountableImage):
+    mountpoint: Optional[bytes]
+
+    def check(self) -> CheckFileResult:
+        # FIXME: Erik: who is supposed to set image_type SYSTEM or VENDOR? Why ExtFsHandler does do it but ErofsHandler does not?
+        if self.fn.lower().startswith(b"system.") or self.fn.lower().startswith(b"system_a.") or self.fn.lower().startswith(b"system-sign."):
+            self.image_type = ImageType.SYSTEM
+        if self.fn.lower().startswith(b"vendor.") or self.fn.lower().startswith(b"vendor_a.") or self.fn.lower().startswith(b"vendor-sign."):
+            self.image_type = ImageType.VENDOR
+
+        with open(self.abs_fn, 'rb') as f:
+            f.seek(0x400)
+            buf = f.read(4)
+            if buf == b'\x10\x20\xf5\xf2':
+                if self.image_type == ImageType.SYSTEM:
+                    return CheckFileResult.SYSTEM_IMG
+                elif self.image_type == ImageType.VENDOR:
+                    return CheckFileResult.VENDOR_IMG
+                else:
+                    raise ValueError("F2FSHandler: Detected EROFS filesystem but self.image_type is not ImageType.SYSTEM or ImageType.VENDOR")
+            else:
+                return CheckFileResult.HANDLER_NO_MATCH
+
+    def mount(self, mountpoint):
+        if os.getuid() != 0:
+            logging.error("F2FSHandler.mount(): Extracting extfs images requires root permissions")
+            sys.exit(1)
+
+        mountpoint = self.extractor.abs_fn(mountpoint)
+        assert not hasattr(self, "mountpoint") or self.mountpoint is None, "F2FSHandler: Can only mount once"
+        assert os.path.exists(mountpoint), "Mountpoint %r doesn't exist" % mountpoint
+        assert os.path.isdir(mountpoint), "Mountpoint %r is not a directory" % mountpoint
+        check_cmd = ["fsck.f2fs", "-y", "-f", self.abs_fn]
+        logging.info("F2FSHandler.mount(): check_cmd=%r" % check_cmd)
+        retcode = subprocess.call(check_cmd)
+        # FIXME: what does retcodes mean
+        # 0: No errors
+        assert retcode in (0,1,2,8), "Failed to check/fix filesystem, fsck.f2fs returned %d" % retcode
+        self.mountpoint = mountpoint
+        mount_cmd = ["mount", "-o", "loop,ro", self.abs_fn, mountpoint]
+        logging.info("F2FSHandler.mount(): mount_cmd=%r" % mount_cmd)
+        subprocess.check_call(mount_cmd)
+
+    def umount(self):
+        cmd = ["umount", self.mountpoint]
+        logging.info("MountableImage.umount: cmd=%r" % cmd)
+        self.mountpoint = None
+        subprocess.check_call(cmd)
+
 
 class CpbHandler(FileHandler):
     def check(self) -> CheckFileResult:
@@ -1788,6 +1837,7 @@ class ArchiveDirectoryHandler:
         HANDLER_LIST_PASS1 = [
             ExtfsHandler,
             ErofsHandler,
+            F2FSHandler,
             SparseImageHandler,
             SignImgHandler,
             TransferListHandler,
